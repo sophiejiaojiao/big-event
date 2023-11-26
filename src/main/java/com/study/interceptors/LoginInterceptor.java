@@ -2,6 +2,7 @@ package com.study.interceptors;
 
 import com.study.pojo.Result;
 import com.study.utils.JwtUtil;
+import com.study.utils.ThreadLocalUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
@@ -22,11 +23,20 @@ public class LoginInterceptor implements HandlerInterceptor {
         // 验证token
         try {
             Map<String, Object> claims = JwtUtil.parseToken(token);
+            // 把业务数据存储到ThreadLocal中
+            ThreadLocalUtil.set(claims);
             return true; // 解析成功，放行
         } catch (Exception e) {
             // http响应状态码为401
             response.setStatus(401);
             return false; // 解析失败，不放行
         }
+    }
+
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
+        // 清空ThreadLocal中的数据，防止内存泄漏
+        ThreadLocalUtil.remove();
+        System.out.println("remove ThreadLocal");
     }
 }

@@ -5,12 +5,13 @@ import com.study.pojo.User;
 import com.study.service.UserService;
 import com.study.utils.JwtUtil;
 import com.study.utils.Md5Util;
+import com.study.utils.ThreadLocalUtil;
 import jakarta.validation.constraints.Pattern;
+import org.hibernate.validator.constraints.URL;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -24,6 +25,8 @@ import java.util.Map;
  * <p>
  * Controller层：也被称为表现层，主要负责前端请求的接收和响应。
  * Controller层会调用Service层的接口，获取业务逻辑处理的结果，并将结果返回给前端，或者转发到不同的视图进行展示。
+ * @URL:url有效性校验
+ * @RequestBody等参数前的注解，是告诉spring mvc框架去自动读取请求中对应的参数
  */
 @RestController
 @RequestMapping("/user")
@@ -65,5 +68,56 @@ public class UserController {
             return Result.success(token);
         }
         return Result.error("密码错误");
+    }
+
+    // 将参数和令牌解析注释掉，通过在拦截器增加ThreadLocal来统一处理
+    @GetMapping("/userInfo")
+    public Result<User> userInfo(/*@RequestHeader(name = "Authorization") String token*/) {
+        /*
+         * 根据用户名查询用户：接口定义不需要入参，而token中有username，因此需要通过解析token来获取当前登录的用户名
+         */
+        /*Map<String, Object> map = JwtUtil.parseToken(token);
+        String username = (String) map.get("username");*/
+        Map<String, Object> map = ThreadLocalUtil.get();
+        String username = (String) map.get("username");
+        User user = userService.findByUserName(username);
+        return Result.success(user);
+    }
+
+    @PutMapping("/update")
+    public Result update(@RequestBody @Validated User user) {
+        userService.update(user);
+        return Result.success();
+    }
+
+    @PatchMapping("/updateAvatar")
+    public Result updateAvatar(@RequestParam @URL String avatarUrl) {
+        userService.updateAvatar(avatarUrl);
+        return Result.success();
+    }
+
+    @PatchMapping("/updatePwd")
+    public Result updatePwd(@RequestBody Map<String, String> params) {
+        // 校验参数
+        String oldPwd = params.get("old_pwd");
+        String newPwd = params.get("new_pwd");
+        String rePwd = params.get("re_pwd");
+        if (!StringUtils.hasLength(oldPwd) || !StringUtils.hasLength(newPwd) || !StringUtils.hasLength(rePwd)) {
+            return Result.error("缺少必要的参数");
+        }
+        // 调用userService根据用户名拿到密码，再和old_pwd比对，确认原密码是否正确
+        Map<String, Object> map = ThreadLocalUtil.get();
+        String username = (String) map.get("username");
+        User loginUser = userService.findByUserName(username);
+
+        if (!loginUser.getPassword().equals(Md5Util.getMD5String(oldPwd))) {
+            return Result.error("原密码不正确");
+        }
+        if (!rePwd.equals(newPwd)) {
+            return Result.error("两次填写的新密码不一样");
+        }
+        // 调用service完成密码更新
+        userService.updatePwd(newPwd);
+        return Result.success();
     }
 }
